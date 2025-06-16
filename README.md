@@ -322,61 +322,61 @@ struct IOqueue {
 
 在CreateCoreSocketNew时，返回的并不是AsyncUDPSocket，而是一个CoreUdpSocket
 
-![image-20250413084109897](./assets\image-20250413084109897.png)
+![image-20250413084109897](./assets/image-20250413084109897.png)
 
 CoreUdpSocket+8才是AsyncUDPSocket
 
-![image-20250413084204137](./assets\image-20250413084204137.png)
+![image-20250413084204137](./assets/image-20250413084204137.png)
 
 然后CreateCoreSocketNew中回调在创建ConnInfo时传入的RelayConnCallBack回调函数
 
-![image-20250413084310959](./assets\image-20250413084310959.png)
+![image-20250413084310959](./assets/image-20250413084310959.png)
 
 接着我们看这个RelayConnCallBack回调，调用的是channelinstance+432处的另一个回调，这个回调是什么？必须要回到channelinstance初始化时看一下
 
-![image-20250413084453094](./assets\image-20250413084453094.png)
+![image-20250413084453094](./assets/image-20250413084453094.png)
 
 sub_41170进行初始化，那么其实就是CreateChannelInstance的参数
 
-![image-20250413084746009](./assets\image-20250413084746009.png)
+![image-20250413084746009](./assets/image-20250413084746009.png)
 
-![image-20250413084809250](./assets\image-20250413084809250.png)
+![image-20250413084809250](./assets/image-20250413084809250.png)
 
 那么就要回到中间层找一下sub_6D344第二个参数，a1+184，而这个InitChannelEngine(a1)的参数又是oninvite时传入的参数，就是mgr
 
-![image-20250413084910578](./assets\image-20250413084910578.png)
+![image-20250413084910578](./assets/image-20250413084910578.png)
 
-![image-20250413084945261](./assets\image-20250413084945261.png)
+![image-20250413084945261](./assets/image-20250413084945261.png)
 
 然后我们看mgr+184，是off_B38E8，而off_B38E8       DCQ sub_60B90，也就是需要解引用两次才能得到sub_60B90
 
-![image-20250413085331734](./assets\image-20250413085331734.png)
+![image-20250413085331734](./assets/image-20250413085331734.png)
 
 而且我们知道onrunThread中是通过解析CTaskparam2这个对象，拿到+16偏移处的dispatch函数，但是这里很明显和之前分析的dispatch不同，我们之前提到过CTaskparam2的不同使用场景
 
-![image-20250413085438648](./assets\image-20250413085438648.png)
+![image-20250413085438648](./assets/image-20250413085438648.png)
 
 这里posttask把CTaskparam2入队列以后，通过解析，会去执行OnThreadrun，再看一次解析过程，这里OnThreadRun的v13就是CTaskparam2，就是上图v17，![image-20250413091029524](.\assets\image-20250413091029524.png)
 
 然后v17+16处就是对应的dispatch
 
-![image-20250413100205204](./assets\image-20250413100205204.png)
+![image-20250413100205204](./assets/image-20250413100205204.png)
 
 看一下这个dispatch函数，我们得先知道每个参数是什么
 
-![image-20250413102002465](./assets\image-20250413102002465.png)
+![image-20250413102002465](./assets/image-20250413102002465.png)
 
 +6896就是mgr，没问题
 
-![image-20250413102857129](./assets\image-20250413102857129.png)
+![image-20250413102857129](./assets/image-20250413102857129.png)
 
 会执行v1，也就是OnTransportChannelEvent，然后看OnTransportChannelEvent
 
-![image-20250413102514869](./assets\image-20250413102514869.png)
+![image-20250413102514869](./assets/image-20250413102514869.png)
 
 OnTransportChannelEvent中直接看case4，break以后就去调用(*v18)(v19, v20, v21, v22, v23)
 
-![image-20250413103022892](./assets\image-20250413103022892.png)
+![image-20250413103022892](./assets/image-20250413103022892.png)
 
 关键又成了+4440的偏移是什么，其实不太好找，最好是对mgr下硬件写入断点。但是这里还有一个技巧，用frida怎么定位对象某个偏移处在哪里被赋值？调用callback时，汇编指令是blr x8，那么只要知道x8寄存器的内容，然后用这个内容减去各个模块的基地址即可。由于这个回调内容过于复杂，大概就是执行一下额外操作，不影响我们理解后续内容。
 
@@ -386,7 +386,7 @@ OnTransportChannelEvent中直接看case4，break以后就去调用(*v18)(v19, v2
 
 然后在RelayRoom偏移792处关联上socket和conn，这是一个重要信息，如果一个conn对应多个socket，那么根据代码风格这里应该是一个链表或者hashtable操作，只有一句这说明一个conn对应的socket是有限的，接着再创建一个ipv6客户端，关联在RelayRoom+800。而前面ioqueue和pollerepoll关联socket时却采用了hashtbale和红黑树，而且ioqueue和pollerepoll是在channelinstance中初始化内存，Relayroom、Relaymgr、conninfo却是在AddNewRelayConn时才创建的，最终把ConnInfo加入到connector+192的hashtable中，
 
-![image-20250413111320525](./assets\image-20250413111320525.png)
+![image-20250413111320525](./assets/image-20250413111320525.png)
 
 至此我们终于理清楚了各个对象之间的关系
 
